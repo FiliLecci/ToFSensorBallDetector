@@ -34,7 +34,7 @@ void init_sensors(Sensor sensors[], int n)
         sensors[i].pos.x = 10;  // I sensori sono fissi a sinistra
         sensors[i].pos.y = SENSOR_DISTANCE * i;
         sensors[i].dist = SENSOR_MAX_DISTANCE;
-    }   
+    }
 }
 
 // Genera una posizione casuale della sfera
@@ -89,7 +89,7 @@ void seleziona_punti(CoordList *lista_punti, Sensor sensors[])
             Coordinata c;
             c.x = sensors[i].dist;
             c.y = sensors[i].pos.y;
-            lista_punti = inserisci_punto(lista_punti, c);
+            inserisci_punto(lista_punti, c);
         }
     }
 }
@@ -152,7 +152,7 @@ void trova_centro(CoordList *lista_punti, Coordinata *centro){
 }
 
 // Funzione per disegnare la scena
-void draw_scene(SDL_Renderer *renderer, Sensor sensors[], Sphere *s, int n)
+void draw_scene(SDL_Renderer *renderer, Sensor sensors[], Sphere *s, CoordList posizioni[], int n)
 {
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
@@ -161,7 +161,7 @@ void draw_scene(SDL_Renderer *renderer, Sensor sensors[], Sphere *s, int n)
     SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
     for (int i = 0; i < n; i++)
     {
-        SDL_Rect rect = {sensors[i].pos.x - 5, sensors[i].pos.y, 10, 10};
+        SDL_Rect rect = {sensors[i].pos.x - 5, sensors[i].pos.y-5, 10, 10};
         SDL_RenderFillRect(renderer, &rect);
     }
 
@@ -176,7 +176,10 @@ void draw_scene(SDL_Renderer *renderer, Sensor sensors[], Sphere *s, int n)
     // sposta il cerchio in basso e gli fa seguire una curva sinusoidale
     s->pos.y = s->pos.y + 1;
     if(s->pos.y > SENSOR_DISTANCE*N-1)
+    {
         s->pos.y = -R;
+        svuota_lista(posizioni);
+    }
 
     s->pos.x = sin((double)s->pos.y*0.02)*200 + 2*R + 215;
 
@@ -205,7 +208,17 @@ void draw_scene(SDL_Renderer *renderer, Sensor sensors[], Sphere *s, int n)
     disegna_sfera(renderer, centro.x, centro.y, 5);
 
     //Memorizza i punti centrali
+    inserisci_punto(posizioni, centro);
 
+    // Disegna le linee tra le varie posizioni
+    SDL_SetRenderDrawColor(renderer, 255, 124, 124, 255);
+    for (int i = 0; i < posizioni->lenght-1; i++)
+    {
+        Coordinata p1 = posizioni->pos[i];
+        Coordinata p2 = posizioni->pos[i+1];
+
+        SDL_RenderDrawLine(renderer, p1.x, p1.y, p2.x, p2.y);   // Disegna una linea tra i punti
+    }
 
     // Libera la lista
     distruggi_lista(lista_punti);
@@ -243,6 +256,9 @@ int main()
     init_sensors(sensors, N);
     generate_sphere(&s);
 
+    // inizializza lista di posizioni
+    CoordList *posizioni = init_list();
+
     int running = 1;
     SDL_Event event;
     while (running) {
@@ -253,7 +269,7 @@ int main()
                 running = 0;
             }
         }
-        draw_scene(renderer, sensors, &s, N);
+        draw_scene(renderer, sensors, &s, posizioni, N);
         SDL_Delay(20);
     }
 

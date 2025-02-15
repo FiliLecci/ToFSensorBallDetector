@@ -32,7 +32,13 @@ CoordList *init_list()
     return list;
 }
 
-CoordList *inserisci_punto(CoordList *list, Coordinata punto)
+void distruggi_lista(CoordList *list)
+{
+    free(list->pos);
+    free(list);
+}
+
+void inserisci_punto(CoordList *list, Coordinata punto)
 {
     (list->lenght)++;
     if((list->pos = (Coordinata*)realloc(list->pos, list->lenght * sizeof(Coordinata))) == NULL)
@@ -43,13 +49,10 @@ CoordList *inserisci_punto(CoordList *list, Coordinata punto)
 
     list->pos[(list->lenght)-1].x = punto.x;
     list->pos[(list->lenght)-1].y = punto.y;
-
-    return list;
 }
 
-
-void distruggi_lista(CoordList *list)
+void svuota_lista(CoordList *list)
 {
-    free(list->pos);
-    free(list);
+    list->lenght = 0;
+    list->pos = realloc(list->pos, 0);
 }
