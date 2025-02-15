@@ -113,10 +113,9 @@ Coordinata calcola_centro(Coordinata p1, Coordinata p2, Coordinata p3) {
         return centro;
     }
 
-    // calcolo le coordinate del centro
-    // si esegue un'approssimazione all'intero più vicino per rendere agevole il rendering ma sarebbe ottimale lasciare un double
-    centro.x = round(abs((C1 * B2 - C2 * B1) / det));
-    centro.y = round(abs((A1 * C2 - A2 * C1) / det));
+    // Calcolo le coordinate del centro
+    centro.x = abs((C1 * B2 - C2 * B1) / det);
+    centro.y = abs((A1 * C2 - A2 * C1) / det);
     return centro;
 }
 
@@ -168,6 +167,16 @@ void draw_scene(SDL_Renderer *renderer, Sensor sensors[], Sphere *s, CoordList p
         SDL_RenderFillRect(renderer, &rect);
     }
 
+    // sposta il cerchio in basso e gli fa seguire una curva sinusoidale
+    s->pos.y = s->pos.y + 1;
+    if(s->pos.y > SENSOR_DISTANCE*N-1)
+    {
+        s->pos.y = -R;
+        svuota_lista(posizioni);    // Svuota la lista delle posizioni del centro
+    }
+
+    s->pos.x = sin((double)s->pos.y*0.02)*200 + 2*R + 215;
+
     // Disegna i raggi laser
     SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
     for (int i = 0; i < n; i++)
@@ -175,16 +184,6 @@ void draw_scene(SDL_Renderer *renderer, Sensor sensors[], Sphere *s, CoordList p
         calcola_distanza(&sensors[i], *s);
         SDL_RenderDrawLine(renderer, (sensors[i].pos.x+5), (sensors[i].pos.y+5), (sensors[i].dist+5), (sensors[i].pos.y+5));
     }
-
-    // sposta il cerchio in basso e gli fa seguire una curva sinusoidale
-    s->pos.y = s->pos.y + 1;
-    if(s->pos.y > SENSOR_DISTANCE*N-1)
-    {
-        s->pos.y = -R;
-        svuota_lista(posizioni);
-    }
-
-    s->pos.x = sin((double)s->pos.y*0.02)*200 + 2*R + 215;
 
     // Disegna la sfera
     SDL_SetRenderDrawColor(renderer, 0, 0, 255, 255);
@@ -209,8 +208,7 @@ void draw_scene(SDL_Renderer *renderer, Sensor sensors[], Sphere *s, CoordList p
     if(trova_centro(lista_punti, &centro))
     {
         disegna_sfera(renderer, centro.x, centro.y, 5);
-        //Memorizza i punti centrali
-        inserisci_punto(posizioni, centro);
+        inserisci_punto(posizioni, centro); //Memorizza i punti centrali
     }
 
     // Disegna le linee tra le varie posizioni
@@ -223,8 +221,7 @@ void draw_scene(SDL_Renderer *renderer, Sensor sensors[], Sphere *s, CoordList p
         SDL_RenderDrawLine(renderer, p1.x, p1.y, p2.x, p2.y);   // Disegna una linea tra i punti
     }
 
-    // Libera la lista
-    distruggi_lista(lista_punti);
+    distruggi_lista(lista_punti);   // Libera la lista
 
     SDL_RenderPresent(renderer);
 }
