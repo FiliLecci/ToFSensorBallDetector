@@ -199,7 +199,7 @@ void draw_scene(SDL_Renderer *renderer, Sensor sensors[], Sphere *s, CoordList p
 
     for (int i = 0; i < l; i++)
     {
-        disegna_sfera(renderer, lista_punti->pos[i].x, lista_punti->pos[i].y, 5);
+        disegna_sfera(renderer, lista_punti->pos[i].x-5, lista_punti->pos[i].y+5, 5);
     }
 
     // Calcola il centro del cerchio usando i primi 3 punti e gli ultimi 3 per ridondanza, poi usa il punto medio
