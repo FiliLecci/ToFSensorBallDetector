@@ -3,6 +3,7 @@
 #include <math.h>
 #include <time.h>
 #include <SDL2/SDL.h>
+#include "coordList.h"
 
 // 1mm = 1pixel
 
@@ -12,11 +13,6 @@
 #define SENSOR_MAX_DISTANCE 1096 //la distanza massima di rilevamento di una palla: 1 gutter (~90mm) + pista (1006mm)
 #define WINDOW_W 1200
 #define WINDOW_H 900
-
-typedef struct{
-    int x;
-    int y;
-} Coordinata;
 
 // Struttura per rappresentare un sensore
 typedef struct {
@@ -29,21 +25,7 @@ typedef struct {
     Coordinata pos;
 } Sphere;
 
-typedef struct{
-    Coordinata pos;
-    struct CoordList *nex_pos;
-} CoordList;
-
-
-void inserisci_punto(CoordList *lista, Coordinata punto)
-{
-    while (lista != NULL)
-    {
-        lista = lista->nex_pos;
-    }
-
-    CoordList *nodo = malloc(sizeof(CoordList));
-}
+typedef enum {false, true} bool;
 
 // Inizializza i sensori lungo l'asse Y
 void init_sensors(Sensor sensors[], int n)
@@ -52,24 +34,30 @@ void init_sensors(Sensor sensors[], int n)
         sensors[i].pos.x = 10;  // I sensori sono fissi a sinistra
         sensors[i].pos.y = SENSOR_DISTANCE * i;
         sensors[i].dist = SENSOR_MAX_DISTANCE;
-    }
-}
-
-// Inizializza array di punti
-void init_coord(Coordinata punti[], int n)
-{
-    for (int i = 0; i < n; i++)
-    {
-        punti[i].x = 0;
-        punti[i].y = 0;
-    }
+    }   
 }
 
 // Genera una posizione casuale della sfera
 void generate_sphere(Sphere *s)
 {
-    s->pos.x = ((double) rand() / RAND_MAX) * SENSOR_MAX_DISTANCE + R;
-    s->pos.y = R + ((double) rand() / RAND_MAX) * (SENSOR_DISTANCE * N - 2 * R);
+    s->pos.x = ((double) rand() / RAND_MAX) * SENSOR_MAX_DISTANCE + 1.25*R;
+    s->pos.y = ((double) rand() / RAND_MAX) * (SENSOR_DISTANCE * N);
+}
+
+void disegna_sfera(SDL_Renderer *renderer, int cx, int cy, int r)
+{
+    for (int w = 0; w < r * 2; w++)
+    {
+        for (int h = 0; h < r * 2; h++)
+        {
+            int dx = r - w;
+            int dy = r - h;
+            if ((dx * dx + dy * dy) <= (r * r))
+            {
+                SDL_RenderDrawPoint(renderer, cx + dx, cy + dy);
+            }
+        }
+    }
 }
 
 // Per ogni sensore calcola il punto, se esiste, in cui incontra la sfera (precisione 1mm = 1px)
@@ -92,19 +80,64 @@ void calcola_distanza(Sensor *sensor, Sphere s)
 }
 
 // Determina le coordinate dei punti a contatto con la sfera
-CoordList* seleziona_punti(Sensor sensors[])
+void seleziona_punti(CoordList *lista_punti, Sensor sensors[])
 {
-    CoordList *c, *c1;
-
     for (int i = 0; i < N; i++)
     {
         if(sensors[i].dist < SENSOR_MAX_DISTANCE)
         {
-            c->pos.x = sensors[i].dist;
-            c->pos.y = sensors[i].pos.y;
+            Coordinata c;
+            c.x = sensors[i].dist;
+            c.y = sensors[i].pos.y;
+            lista_punti = inserisci_punto(lista_punti, c);
         }
     }
+}
 
+// Funzione per calcolare il centro della circonferenza data da tre punti
+Coordinata calcola_centro(Coordinata p1, Coordinata p2, Coordinata p3) {
+    Coordinata centro;
+    // trovo i coefficienti del sistema ed uso Cramer
+    double A1 = -2 * (p2.x - p1.x);
+    double B1 = -2 * (p2.y - p1.y);
+    double C1 = p2.x * p2.x - p1.x * p1.x + p2.y * p2.y - p1.y * p1.y;
+
+    double A2 = -2 * (p3.x - p1.x);
+    double B2 = -2 * (p3.y - p1.y);
+    double C2 = p3.x * p3.x - p1.x * p1.x + p3.y * p3.y - p1.y * p1.y;
+
+    double det = A1 * B2 - A2 * B1;
+    if (det == 0) {
+        centro.x = 0;
+        centro.y = 0;
+        return centro;
+    }
+
+    // calcolo le coordinate del centro
+    // si esegue un'approssimazione all'intero più vicino per rendere agevole il rendering ma sarebbe ottimale lasciare un double
+    centro.x = round(abs((C1 * B2 - C2 * B1) / det));
+    centro.y = round(abs((A1 * C2 - A2 * C1) / det));
+    return centro;
+}
+
+/* Calcola il centro della circonferenza due volte e restituisce il punto medio tra le due
+ * per cercare di avere una misurazione più precisa
+*/
+void trova_centro(CoordList *lista_punti, Coordinata *centro){
+    Coordinata c1;
+    int list_len = lista_punti->lenght;
+
+    if(list_len < 3)
+    {
+        centro->x = 0;
+        centro->y = 0;
+        return;
+    }
+
+    c1 = calcola_centro(lista_punti->pos[0], lista_punti->pos[1], lista_punti->pos[2]);
+
+    centro->x = c1.x;
+    centro->y = c1.y;
 }
 
 // Funzione per disegnare la scena
@@ -129,28 +162,42 @@ void draw_scene(SDL_Renderer *renderer, Sensor sensors[], Sphere *s, int n)
         SDL_RenderDrawLine(renderer, (sensors[i].pos.x+5), (sensors[i].pos.y+5), (sensors[i].dist+5), (sensors[i].pos.y+5));
     }
 
-    // Sposta la sfera
-    s->pos.y = (s->pos.y + 1) % (N*SENSOR_DISTANCE);
+    // sposta il cerchio in basso e gli fa seguire una curva sinusoidale
+    s->pos.y = s->pos.y + 1;
+    if(s->pos.y > SENSOR_DISTANCE*N-1)
+        s->pos.y = -R;
+
+    s->pos.x = sin((double)s->pos.y*0.02)*200 + 2*R + 215;
 
     // Disegna la sfera
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-    for (int w = 0; w < R * 2; w++)
-    {
-        for (int h = 0; h < R * 2; h++)
-        {
-            int dx = R - w;
-            int dy = R - h;
-            if ((dx * dx + dy * dy) <= (R * R))
-            {
-                SDL_RenderDrawPoint(renderer, s->pos.x + dx, s->pos.y + dy);
-            }
-        }
-    }
+    SDL_SetRenderDrawColor(renderer, 0, 0, 255, 255);
+    disegna_sfera(renderer, s->pos.x, s->pos.y, R);
+
+    // Ottiene i punti di contatto come lista
+    CoordList *lista_punti = init_list();
+    seleziona_punti(lista_punti, sensors);
 
     // Disegna i punti di contatto
-    //seleziona_punti(sensors, );
-
     SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+    int l = lista_punti->lenght;
+
+    for (int i = 0; i < l; i++)
+    {
+        disegna_sfera(renderer, lista_punti->pos[i].x, lista_punti->pos[i].y+5, 5);
+    }
+
+    // Calcola il centro del cerchio usando i primi 3 punti e gli ultimi 3 per ridondanza, poi usa il punto medio
+    Coordinata centro;
+
+    trova_centro(lista_punti, &centro);
+
+    disegna_sfera(renderer, centro.x, centro.y, 5);
+
+    //Memorizza i punti centrali
+    
+
+    // Libera la lista
+    distruggi_lista(lista_punti);
 
     SDL_RenderPresent(renderer);
 }
@@ -179,8 +226,6 @@ int main()
         return -1;
     }
 
-    int max_contact_points = round((2*R)/SENSOR_DISTANCE); // Il numero massimo di sensori che possono vedere la sfera nello stesso momento
-
     Sensor sensors[N];
     Sphere s;
 
@@ -198,7 +243,7 @@ int main()
             }
         }
         draw_scene(renderer, sensors, &s, N);
-        SDL_Delay(10);
+        SDL_Delay(20);
     }
 
     SDL_DestroyRenderer(renderer);
