@@ -122,8 +122,9 @@ Coordinata calcola_centro(Coordinata p1, Coordinata p2, Coordinata p3) {
 
 /* Calcola il centro della circonferenza due volte e restituisce il punto medio tra le due
  * per cercare di avere una misurazione più precisa
+ * @returns 0 se il centro non può essere calcolato, 1 altrimenti
 */
-void trova_centro(CoordList *lista_punti, Coordinata *centro){
+int trova_centro(CoordList *lista_punti, Coordinata *centro){
     Coordinata c1, c2;
     int list_len = lista_punti->lenght;
 
@@ -131,7 +132,7 @@ void trova_centro(CoordList *lista_punti, Coordinata *centro){
     {
         centro->x = 0;
         centro->y = 0;
-        return;
+        return 0;
     }
 
     if(list_len >= 3)
@@ -149,6 +150,8 @@ void trova_centro(CoordList *lista_punti, Coordinata *centro){
         centro->x = (c1.x+c2.x)/2;
         centro->y = (c1.y+c2.y)/2;
     }
+
+    return 1;
 }
 
 // Funzione per disegnare la scena
@@ -203,12 +206,12 @@ void draw_scene(SDL_Renderer *renderer, Sensor sensors[], Sphere *s, CoordList p
     // Calcola il centro del cerchio usando i primi 3 punti e gli ultimi 3 per ridondanza, poi usa il punto medio
     Coordinata centro;
 
-    trova_centro(lista_punti, &centro);
-
-    disegna_sfera(renderer, centro.x, centro.y, 5);
-
-    //Memorizza i punti centrali
-    inserisci_punto(posizioni, centro);
+    if(trova_centro(lista_punti, &centro))
+    {
+        disegna_sfera(renderer, centro.x, centro.y, 5);
+        //Memorizza i punti centrali
+        inserisci_punto(posizioni, centro);
+    }
 
     // Disegna le linee tra le varie posizioni
     SDL_SetRenderDrawColor(renderer, 255, 124, 124, 255);
