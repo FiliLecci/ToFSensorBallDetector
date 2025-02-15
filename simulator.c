@@ -199,7 +199,7 @@ void draw_scene(SDL_Renderer *renderer, Sensor sensors[], Sphere *s, CoordList p
 
     for (int i = 0; i < l; i++)
     {
-        disegna_sfera(renderer, lista_punti->pos[i].x, lista_punti->pos[i].y+5, 5);
+        disegna_sfera(renderer, lista_punti->pos[i].x, lista_punti->pos[i].y, 5);
     }
 
     // Calcola il centro del cerchio usando i primi 3 punti e gli ultimi 3 per ridondanza, poi usa il punto medio
@@ -207,9 +207,13 @@ void draw_scene(SDL_Renderer *renderer, Sensor sensors[], Sphere *s, CoordList p
 
     if(trova_centro(lista_punti, &centro))
     {
-        disegna_sfera(renderer, centro.x, centro.y, 5);
-        inserisci_punto(posizioni, centro); //Memorizza i punti centrali
+        disegna_sfera(renderer, centro.x, centro.y, 5); // Disegna il centro calcolato
+        inserisci_punto(posizioni, centro); // Memorizza il nuovo punto centrale calcolato
     }
+
+    // Disegno il centro reale dopo così si vede anche se è sovrapposto
+    SDL_SetRenderDrawColor(renderer, 199, 34, 191, 255);
+    disegna_sfera(renderer, s->pos.x, s->pos.y, 5);
 
     // Disegna le linee tra le varie posizioni
     SDL_SetRenderDrawColor(renderer, 255, 124, 124, 255);
