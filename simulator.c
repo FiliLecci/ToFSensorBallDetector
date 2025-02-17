@@ -8,7 +8,7 @@
 // 1mm = 1pixel
 
 #define N 20  // Numero di sensori
-#define SENSOR_DISTANCE 50// Distranza tra i sensori
+#define SENSOR_DISTANCE 50 // Distranza tra i sensori 5cm = 0.05m
 #define R 109  // Raggio della sfera (109mm)
 #define SENSOR_MAX_DISTANCE 1096 //la distanza massima di rilevamento di una palla: 1 gutter (~90mm) + pista (1006mm)
 #define WINDOW_W 1200
@@ -227,24 +227,23 @@ void draw_scene(SDL_Renderer *renderer, Sensor sensors[], Sphere *s, CoordList p
 
     // Ottiene i punti di contatto come lista
     CoordList *lista_punti = init_list();
-    static int id_ultimo_sensore = 0;   // Static mantiene il valore della variabile fino alla terminazione del programma
-    static long last_checkpoint_ts = 0.0;   // Il momento del passaggio sull'ultimo sensore
+    static int id_ultimo_sensore;   // Static mantiene il valore della variabile fino alla terminazione del programma
+    static clock_t last_checkpoint_ts;   // Il momento del passaggio sull'ultimo sensore
     float velocita = 0.0; // Km/h
     int new_ultimo_sensore; // Contiene l'id dell'ultimo sensore attuale
 
     seleziona_punti(lista_punti, sensors, &new_ultimo_sensore);
-
     if(new_ultimo_sensore != id_ultimo_sensore)
     {
-        long last_ts = clock();
+        clock_t last_ts = clock();
         id_ultimo_sensore = new_ultimo_sensore;
 
-        long delta_t = last_ts - last_checkpoint_ts;
-        velocita = 0.05 / (delta_t/1000);   // m/s
+        double delta_t = ((double)last_ts - (double)last_checkpoint_ts)/CLOCKS_PER_SEC;
+        velocita = (SENSOR_DISTANCE / delta_t)/100;   // (mm/s)/100 = cm/s
+
+        printf("Passaggio in %f: %f cm/s\n", delta_t, velocita);
 
         last_checkpoint_ts = last_ts;
-
-        printf("Passaggio in %ld: %f m/s\n", delta_t, velocita);
     }
 
     // Disegna i punti di contatto
