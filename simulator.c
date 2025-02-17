@@ -65,6 +65,11 @@ SDL_Renderer *init_renderer(SDL_Window *window)
     return renderer;
 }
 
+long double get_millis(struct timespec ts)
+{
+    return (ts.tv_nsec / 1e6) + (ts.tv_sec * 1e3);
+}
+
 // Genera una posizione casuale della sfera
 void generate_sphere(Sphere *s)
 {
@@ -204,14 +209,14 @@ void draw_scene(SDL_Renderer *renderer, Sensor sensors[], Sphere *s, CoordList p
     }
 
     // sposta il cerchio in basso e gli fa seguire una curva sinusoidale
-    s->pos.y = s->pos.y + 1;
-    if(s->pos.y > SENSOR_DISTANCE*N-1)
+    s->pos.y = s->pos.y + 2;
+    if(s->pos.y > SENSOR_DISTANCE*N-1)  // Arrivo a fondo schermo
     {
         s->pos.y = -R;
         svuota_lista(posizioni);    // Svuota la lista delle posizioni del centro
     }
 
-    s->pos.x = sin((double)s->pos.y*0.02)*200 + 2*R + 215;
+    s->pos.x = log((double)s->pos.y*0.02 + 1.1)*260 + 2*R + 10;
 
     // Disegna i raggi laser
     SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
@@ -228,22 +233,30 @@ void draw_scene(SDL_Renderer *renderer, Sensor sensors[], Sphere *s, CoordList p
     // Ottiene i punti di contatto come lista
     CoordList *lista_punti = init_list();
     static int id_ultimo_sensore;   // Static mantiene il valore della variabile fino alla terminazione del programma
-    static clock_t last_checkpoint_ts;   // Il momento del passaggio sull'ultimo sensore
+    static struct timespec last_checkpoint_ts;   // Il momento del passaggio sull'ultimo sensore
     float velocita = 0.0; // Km/h
     int new_ultimo_sensore; // Contiene l'id dell'ultimo sensore attuale
 
     seleziona_punti(lista_punti, sensors, &new_ultimo_sensore);
+
     if(new_ultimo_sensore != id_ultimo_sensore)
     {
-        clock_t last_ts = clock();
-        id_ultimo_sensore = new_ultimo_sensore;
+        // Calcola la velocità
+        struct timespec last_ts;
+        timespec_get(&last_ts, TIME_UTC);
 
-        double delta_t = ((double)last_ts - (double)last_checkpoint_ts)/CLOCKS_PER_SEC;
-        velocita = (SENSOR_DISTANCE / delta_t)/100;   // (mm/s)/100 = cm/s
+        long double start_ms = get_millis(last_checkpoint_ts);
+        long double end_ms = get_millis(last_ts);
 
-        printf("Passaggio in %f: %f cm/s\n", delta_t, velocita);
+        double delta_t = (end_ms - start_ms) / 1e3;
+
+        velocita = (SENSOR_DISTANCE / delta_t)/1e6*3600;   // (mm/s)/1000*3600 = Km/h
+
+        printf("%f Km/h\n", velocita);
 
         last_checkpoint_ts = last_ts;
+
+        id_ultimo_sensore = new_ultimo_sensore;
     }
 
     // Disegna i punti di contatto
@@ -306,12 +319,15 @@ int start_scene()
         {
             if (event.type == SDL_QUIT)
             {
+                printf("Chiusura programmo uga buga\n");
                 running = 0;
             }
         }
         draw_scene(renderer, sensors, &s, posizioni);
-        SDL_Delay(20);
+        SDL_Delay(10);
     }
+
+    distruggi_lista(posizioni);
 
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
