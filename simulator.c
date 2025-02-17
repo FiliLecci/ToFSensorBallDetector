@@ -12,12 +12,13 @@
 #define R 109  // Raggio della sfera (109mm)
 #define SENSOR_MAX_DISTANCE 1096 //la distanza massima di rilevamento di una palla: 1 gutter (~90mm) + pista (1006mm)
 #define WINDOW_W 1200
-#define WINDOW_H 900
+#define WINDOW_H 1000
 
 // Struttura per rappresentare un sensore
 typedef struct {
     Coordinata pos;
-    int dist;   //distanza misurata
+    int dist;   // distanza misurata
+    int sensor_id; // id del sensore
 } Sensor;
 
 // Struttura per la sfera
@@ -32,9 +33,36 @@ void init_sensors(Sensor sensors[], int n)
 {
     for (int i = 0; i < n; i++) {
         sensors[i].pos.x = 10;  // I sensori sono fissi a sinistra
-        sensors[i].pos.y = SENSOR_DISTANCE * i;
+        sensors[i].pos.y = SENSOR_DISTANCE * i + 25;
         sensors[i].dist = SENSOR_MAX_DISTANCE;
+        sensors[i].sensor_id = i;
     }
+}
+
+SDL_Window *init_window(){
+    SDL_Window *window = SDL_CreateWindow("Simulazione Sensori Laser", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_W, WINDOW_H, SDL_WINDOW_SHOWN);
+    
+    if (!window) {
+        printf("Errore nella creazione della finestra: %s\n", SDL_GetError());
+        SDL_Quit();
+        return NULL;
+    }
+
+    return window;
+}
+
+SDL_Renderer *init_renderer(SDL_Window *window)
+{
+    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    if (!renderer)
+    {
+        printf("Errore nella creazione del renderer: %s\n", SDL_GetError());
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return NULL;
+    }
+
+    return renderer;
 }
 
 // Genera una posizione casuale della sfera
@@ -79,8 +107,14 @@ void calcola_distanza(Sensor *sensor, Sphere s)
     sensor->dist = SENSOR_MAX_DISTANCE;
 }
 
-// Determina le coordinate dei punti a contatto con la sfera
-void seleziona_punti(CoordList *lista_punti, Sensor sensors[])
+/* Determina le coordinate dei punti a contatto con la sfera e sensori ad essi associati. 
+ * @param *lista_punti l'array nel quale vengono inseriti i punti calolati
+ * @param sensors[] la lista dei sensori da verificare
+ * @param id_sensori[] array nel quale mettere gli id dei sensori che rilevano la palla
+ * 
+ * @return numero di punti trovati
+ */
+void seleziona_punti(CoordList *lista_punti, Sensor sensors[], int *id_ultimo_sensore)
 {
     for (int i = 0; i < N; i++)
     {
@@ -90,6 +124,8 @@ void seleziona_punti(CoordList *lista_punti, Sensor sensors[])
             c.x = sensors[i].dist;
             c.y = sensors[i].pos.y;
             inserisci_punto(lista_punti, c);
+
+            *id_ultimo_sensore = sensors[i].sensor_id;
         }
     }
 }
@@ -154,14 +190,14 @@ int trova_centro(CoordList *lista_punti, Coordinata *centro){
 }
 
 // Funzione per disegnare la scena
-void draw_scene(SDL_Renderer *renderer, Sensor sensors[], Sphere *s, CoordList posizioni[], int n)
+void draw_scene(SDL_Renderer *renderer, Sensor sensors[], Sphere *s, CoordList posizioni[])
 {
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
 
     // Disegna i sensori
     SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
-    for (int i = 0; i < n; i++)
+    for (int i = 0; i < N; i++)
     {
         SDL_Rect rect = {sensors[i].pos.x - 5, sensors[i].pos.y-5, 10, 10};
         SDL_RenderFillRect(renderer, &rect);
@@ -179,10 +215,10 @@ void draw_scene(SDL_Renderer *renderer, Sensor sensors[], Sphere *s, CoordList p
 
     // Disegna i raggi laser
     SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-    for (int i = 0; i < n; i++)
+    for (int i = 0; i < N; i++)
     {
         calcola_distanza(&sensors[i], *s);
-        SDL_RenderDrawLine(renderer, (sensors[i].pos.x+5), (sensors[i].pos.y+5), (sensors[i].dist+5), (sensors[i].pos.y+5));
+        SDL_RenderDrawLine(renderer, (sensors[i].pos.x+5), sensors[i].pos.y, (sensors[i].dist+5), sensors[i].pos.y);
     }
 
     // Disegna la sfera
@@ -191,7 +227,25 @@ void draw_scene(SDL_Renderer *renderer, Sensor sensors[], Sphere *s, CoordList p
 
     // Ottiene i punti di contatto come lista
     CoordList *lista_punti = init_list();
-    seleziona_punti(lista_punti, sensors);
+    static int id_ultimo_sensore = 0;   // Static mantiene il valore della variabile fino alla terminazione del programma
+    static long last_checkpoint_ts = 0.0;   // Il momento del passaggio sull'ultimo sensore
+    float velocita = 0.0; // Km/h
+    int new_ultimo_sensore; // Contiene l'id dell'ultimo sensore attuale
+
+    seleziona_punti(lista_punti, sensors, &new_ultimo_sensore);
+
+    if(new_ultimo_sensore != id_ultimo_sensore)
+    {
+        long last_ts = clock();
+        id_ultimo_sensore = new_ultimo_sensore;
+
+        long delta_t = last_ts - last_checkpoint_ts;
+        velocita = 0.05 / (delta_t/1000);   // m/s
+
+        last_checkpoint_ts = last_ts;
+
+        printf("Passaggio in %ld: %f m/s\n", delta_t, velocita);
+    }
 
     // Disegna i punti di contatto
     SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
@@ -199,7 +253,7 @@ void draw_scene(SDL_Renderer *renderer, Sensor sensors[], Sphere *s, CoordList p
 
     for (int i = 0; i < l; i++)
     {
-        disegna_sfera(renderer, lista_punti->pos[i].x, lista_punti->pos[i].y+5, 5);
+        disegna_sfera(renderer, lista_punti->pos[i].x, lista_punti->pos[i].y, 5);
     }
 
     // Calcola il centro del cerchio usando i primi 3 punti e gli ultimi 3 per ridondanza, poi usa il punto medio
@@ -230,29 +284,11 @@ void draw_scene(SDL_Renderer *renderer, Sensor sensors[], Sphere *s, CoordList p
     SDL_RenderPresent(renderer);
 }
 
-int main()
+int start_scene()
 {
-    srand(time(NULL));
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
-        printf("Errore nell'inizializzazione di SDL: %s\n", SDL_GetError());
-        return -1;
-    }
+    SDL_Window *window = init_window();
 
-    SDL_Window *window = SDL_CreateWindow("Simulazione Sensori Laser", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_W, WINDOW_H, SDL_WINDOW_SHOWN);
-    if (!window) {
-        printf("Errore nella creazione della finestra: %s\n", SDL_GetError());
-        SDL_Quit();
-        return -1;
-    }
-
-    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-    if (!renderer)
-    {
-        printf("Errore nella creazione del renderer: %s\n", SDL_GetError());
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return -1;
-    }
+    SDL_Renderer *renderer = init_renderer(window);
 
     Sensor sensors[N];
     Sphere s;
@@ -265,6 +301,7 @@ int main()
 
     int running = 1;
     SDL_Event event;
+
     while (running) {
         while (SDL_PollEvent(&event))
         {
@@ -273,12 +310,28 @@ int main()
                 running = 0;
             }
         }
-        draw_scene(renderer, sensors, &s, posizioni, N);
+        draw_scene(renderer, sensors, &s, posizioni);
         SDL_Delay(20);
     }
 
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
+
+    return 1;
+}
+
+int main()
+{
+    srand(time(NULL));
+    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+        printf("Errore nell'inizializzazione di SDL: %s\n", SDL_GetError());
+        return -1;
+    }
+
+    if(start_scene() == -1)
+        perror("Errore nell'inizializzazione della scena\n");
+
+
     return 0;
 }
