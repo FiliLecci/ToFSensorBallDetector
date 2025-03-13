@@ -39,7 +39,8 @@ void init_sensors(Sensor sensors[], int n)
     }
 }
 
-SDL_Window *init_window(){
+SDL_Window *init_window()
+{
     SDL_Window *window = SDL_CreateWindow("Simulazione Sensori Laser", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_W, WINDOW_H, SDL_WINDOW_SHOWN);
     
     if (!window) {
@@ -136,7 +137,8 @@ void seleziona_punti(CoordList *lista_punti, Sensor sensors[], int *id_ultimo_se
 }
 
 // Funzione per calcolare il centro della circonferenza data da tre punti
-Coordinata calcola_centro(Coordinata p1, Coordinata p2, Coordinata p3) {
+Coordinata calcola_centro(Coordinata p1, Coordinata p2, Coordinata p3)
+{
     Coordinata centro;
     // trovo i coefficienti del sistema ed uso Cramer
     double A1 = -2 * (p2.x - p1.x);
@@ -164,7 +166,8 @@ Coordinata calcola_centro(Coordinata p1, Coordinata p2, Coordinata p3) {
  * per cercare di avere una misurazione più precisa
  * @returns 0 se il centro non può essere calcolato, 1 altrimenti
 */
-int trova_centro(CoordList *lista_punti, Coordinata *centro){
+int trova_centro(CoordList *lista_punti, Coordinata *centro)
+{
     Coordinata c1, c2;
     int list_len = lista_punti->lenght;
 
@@ -209,14 +212,15 @@ void draw_scene(SDL_Renderer *renderer, Sensor sensors[], Sphere *s, CoordList p
     }
 
     // sposta il cerchio in basso e gli fa seguire una curva sinusoidale
-    s->pos.y = s->pos.y + 2;
-    if(s->pos.y > SENSOR_DISTANCE*N-1)  // Arrivo a fondo schermo
+    s->pos.y = s->pos.y - 2;
+    if(s->pos.y > SENSOR_DISTANCE*N-1 || s->pos.y <= 0)  // Arrivo a fondo schermo
     {
-        s->pos.y = -R;
+        s->pos.y = SENSOR_DISTANCE*N-1;
         svuota_lista(posizioni);    // Svuota la lista delle posizioni del centro
     }
 
-    s->pos.x = log((double)s->pos.y*0.02 + 1.1)*260 + 2*R + 10;
+    // s->pos.x = log((double)s->pos.y*0.02 + 1.1)*260 + 2*R + 10;
+    s->pos.x = -atan((double)s->pos.y*0.01)*200 + 600;
 
     // Disegna i raggi laser
     SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
@@ -231,7 +235,7 @@ void draw_scene(SDL_Renderer *renderer, Sensor sensors[], Sphere *s, CoordList p
     disegna_sfera(renderer, s->pos.x, s->pos.y, R);
 
     // Ottiene i punti di contatto come lista
-    CoordList *lista_punti = init_list();
+    CoordList *lista_punti = (CoordList*)init_list();
     static int id_ultimo_sensore;   // Static mantiene il valore della variabile fino alla terminazione del programma
     static struct timespec last_checkpoint_ts;   // Il momento del passaggio sull'ultimo sensore
     float velocita = 0.0; // Km/h
@@ -308,13 +312,15 @@ int start_scene()
     init_sensors(sensors, N);
     generate_sphere(&s);
 
-    // inizializza lista di posizioni
-    CoordList *posizioni = init_list();
+    // inizializza lista dello storico delle posizioni 
+    CoordList *posizioni = (CoordList*)init_list();
 
     int running = 1;
     SDL_Event event;
 
     while (running) {
+        draw_scene(renderer, sensors, &s, posizioni);
+        SDL_Delay(10);
         while (SDL_PollEvent(&event))
         {
             if (event.type == SDL_QUIT)
@@ -323,8 +329,6 @@ int start_scene()
                 running = 0;
             }
         }
-        draw_scene(renderer, sensors, &s, posizioni);
-        SDL_Delay(10);
     }
 
     distruggi_lista(posizioni);
