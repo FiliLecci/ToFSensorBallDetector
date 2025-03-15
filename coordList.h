@@ -12,7 +12,7 @@ typedef struct CoordList{
     int lenght;
 } CoordList;
 
-CoordList *init_list()
+void *init_list()
 {
     CoordList *list;
 
