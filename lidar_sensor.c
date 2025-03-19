@@ -14,7 +14,7 @@
 #define R 109  // Raggio della sfera (109mm)
 #define WINDOW_W 1920
 #define WINDOW_H 1080
-#define NUMERO_PUNTI 360
+#define NUMERO_PUNTI 400
 #define SENSOR_MAX_DISTANCE 800 //la distanza massima di rilevamento di una palla: 1 gutter (~90mm) + pista (1006mm)
 #define LIDAR_ANGLE 180 // il FoV del LiDAR in °, simmetrico rispetto all'asse x (90° = 45° sopra e 45° sotto l'asse x)
 
@@ -89,7 +89,7 @@ void disegna_lidar(Lidar *lidar, SDL_Renderer *renderer)
     SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
     for (int i = 0; i < lidar->numero_misurazioni; i++)
     {
-        float angolo = (360/NUMERO_PUNTI)*i;
+        float angolo = (360.0/NUMERO_PUNTI)*i;
 
         float distanza = lidar->misure[i].distanza;
 
@@ -211,7 +211,7 @@ void fetch_lidar(Lidar *lidar, Sphere *s)
 {
     for (int i = 0; i < NUMERO_PUNTI; i++)
     {
-        float angolo = (360/NUMERO_PUNTI)*i;
+        float angolo = (360.0 / NUMERO_PUNTI)*i;
         calcola_distanza(angolo, lidar, *s);
     }
 }
