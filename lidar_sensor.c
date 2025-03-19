@@ -12,10 +12,11 @@
 #endif
 
 #define R 109  // Raggio della sfera (109mm)
-#define WINDOW_W 1500
-#define WINDOW_H 900
-#define NUMERO_PUNTI 180
+#define WINDOW_W 1920
+#define WINDOW_H 1080
+#define NUMERO_PUNTI 360
 #define SENSOR_MAX_DISTANCE 800 //la distanza massima di rilevamento di una palla: 1 gutter (~90mm) + pista (1006mm)
+#define LIDAR_ANGLE 180 // il FoV del LiDAR in °, simmetrico rispetto all'asse x (90° = 45° sopra e 45° sotto l'asse x)
 
 #define toRad(deg) (deg*M_PI/180)
 
@@ -82,39 +83,137 @@ void disegna_sfera(SDL_Renderer *renderer, int cx, int cy, int r)
     }
 }
 
-// Calcola la distanza della sfera dal centro del lidar all'angolo specificato
-void calcola_distanza(float angle, Lidar *lidar, Sphere s, SDL_Renderer *renderer)
+void disegna_lidar(Lidar *lidar, SDL_Renderer *renderer)
 {
-    /* TODO fare il calcolo del punto di contatto con complessita O(1)
-     * equazione della retta passante per il lidar (xl, yl) all'angolo in gradi m
-     * gradi in radianti = m * M_PI/180
-     * y = tan(radianti)(x - xl) + yl --> y = tan(radianti)x - (tan(radianti)-xl) + yl
-     * equazione circonferenza
-     * (x-xc)^2 + (y-yc)^2 = r^2
-     * 
-     * tan(radianti)x - (tan(radianti)-xl) + yl - y = 0
-     * 
-     * x^2 + y^2 - 2x xc - 2y yc - r^2  + xc^2 + yc^2= 0
-     */
-
-    // Controlla se lungo la retta incontra un punto all'interno della circonferenza
-    for (int i= 0; i < SENSOR_MAX_DISTANCE; i++)
+    // Disegna i raggi laser
+    SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+    for (int i = 0; i < lidar->numero_misurazioni; i++)
     {
-        // Calcola le coordinate del punto da controllare
-        Coordinata c;
-        c.x = lidar->pos.x+(cos(toRad(angle))*i);
-        c.y = lidar->pos.y+(sin(toRad(angle))*i);
+        float angolo = (360/NUMERO_PUNTI)*i;
 
-        if (pow(c.x-s.pos.x, 2) + pow(c.y-s.pos.y, 2) <= (R * R))
-        {
-            add_misura(lidar, angle, i);
-            disegna_sfera(renderer, c.x, c.y, 3);   //disegna subito i punti di contatto
+        float distanza = lidar->misure[i].distanza;
 
-            return;
-        }
+        SDL_RenderDrawLine(renderer, lidar->pos.x, lidar->pos.y, lidar->pos.x+distanza*cos(toRad(angolo)), lidar->pos.y+distanza*sin(toRad(angolo)));
     }
 
-    add_misura(lidar, angle, SENSOR_MAX_DISTANCE);
+    // Disegna il LIDAR
+    SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
+    SDL_Rect rect = {lidar->pos.x - 10, lidar->pos.y - 10, 20, 20};
+    SDL_RenderFillRect(renderer, &rect);
+}
+
+// Calcola la distanza tra p1 e p2
+float distanza_punti(Coordinata p1, Coordinata p2)
+{
+    if(p1.x == p2.x)
+        return p2.y - p1.y;
+    
+    if(p1.y == p2.y)
+        return p2.x - p1.x;
+
+    return sqrt(pow(p2.x - p1.x, 2) + pow(p2.y - p1.y, 2));
+}
+
+// Funzione per calcolare le soluzioni dell'intersezione
+void calcola_distanza(float angle, Lidar *lidar, Sphere s) {
+    // Coefficiente angolare della retta
+    float rad = angle * M_PI / 180;
+    double m;
+    bool vertical_line = False;
+
+    // Gestione esplicita dei casi in cui l'angolo è 90° o 270°
+    if (angle == 90 || angle == 270) {
+        vertical_line = True;
+    } else {
+        m = tan(rad);  // Tangente dell'angolo in radianti
+    }
+
+    float yl = lidar->pos.y, xl = lidar->pos.x;
+    float xc = s.pos.x, yc = s.pos.y;
+
+    double a, b, c;
+
+    if (vertical_line) {
+        // Gestione del caso di linea verticale
+        a = 1;
+        b = -2 * yc;
+        c = yc * yc + (xl - xc) * (xl - xc) - R * R;
+    } else {
+        // Espandiamo l'equazione per ottenere una forma quadratica rispetto a x
+        a = 1 + m * m;  // Coefficiente di x^2
+        b = -(2 * xc) - (2 * m * m * xl) + (2 * m * yl) - (2 * m * yc);  // Coefficiente di x
+        c = (xc * xc) + ((xl * xl) * (m * m)) - (2 * xl * yl * m) + (2 * xl * yc * m) + (yl * yl) - (2 * yl * yc) + (yc * yc) - (R * R);  // Termine costante
+    }
+
+    // Risolviamo l'equazione quadratica ax^2 + bx + c = 0
+    double discriminante = b * b - 4 * a * c;
+
+    if (discriminante < 0) {
+        add_misura(lidar, angle, SENSOR_MAX_DISTANCE);
+        return;
+    }
+
+    double x1, x2, y1, y2;
+
+    if (vertical_line) {
+        x1 = xl;
+        x2 = xl;
+        y1 = yc + sqrt(discriminante) / (2 * a);
+        y2 = yc - sqrt(discriminante) / (2 * a);
+    } else {
+        x1 = (-b + sqrt(discriminante)) / (2 * a);
+        x2 = (-b - sqrt(discriminante)) / (2 * a);
+        y1 = m * (x1 - xl) + yl;
+        y2 = m * (x2 - xl) + yl;
+    }
+
+    Coordinata c1, c2;
+    c1.x = x1;
+    c1.y = y1;
+    c2.x = x2;
+    c2.y = y2;
+
+    float dist1 = distanza_punti(c1, lidar->pos);
+    float dist2 = distanza_punti(c2, lidar->pos);
+
+    if (dist1 > SENSOR_MAX_DISTANCE && dist2 > SENSOR_MAX_DISTANCE) {
+        add_misura(lidar, angle, SENSOR_MAX_DISTANCE);
+        return;
+    }
+
+    // Calcola il vettore direzione del raggio
+    float dx = cos(rad);
+    float dy = sin(rad);
+
+    // Determina se i due punti sono nella direzione del raggio
+    bool c1_in_direction = ((c1.x - xl) * dx + (c1.y - yl) * dy) > 0;
+    bool c2_in_direction = ((c2.x - xl) * dx + (c2.y - yl) * dy) > 0;
+
+    if (c1_in_direction && c2_in_direction) {
+        // Entrambi i punti sono nella direzione del raggio, prende il più vicino
+        if (dist1 < dist2) {
+            add_misura(lidar, angle, dist1);
+        } else {
+            add_misura(lidar, angle, dist2);
+        }
+    } else if (c1_in_direction) {
+        add_misura(lidar, angle, dist1);
+    } else if (c2_in_direction) {
+        add_misura(lidar, angle, dist2);
+    } else {
+        // Nessun punto è nella direzione (credo sia impossibile ma non si sa mai)
+        add_misura(lidar, angle, SENSOR_MAX_DISTANCE);
+    }
+}
+
+// Aggiunge per ogni angolo delle misurazioni il dato relativo
+void fetch_lidar(Lidar *lidar, Sphere *s)
+{
+    for (int i = 0; i < NUMERO_PUNTI; i++)
+    {
+        float angolo = (360/NUMERO_PUNTI)*i;
+        calcola_distanza(angolo, lidar, *s);
+    }
 }
 
 /* Determina le coordinate dei punti a contatto con la sfera e sensori ad essi associati. 
@@ -128,8 +227,8 @@ void seleziona_punti(CoordList *lista_punti, Lidar *lidar)
         if(lidar->misure[i].distanza < SENSOR_MAX_DISTANCE)
         {
             Coordinata c;
-            c.x = lidar->pos.x+(cos(toRad(lidar->misure[i].angolo))*i);
-            c.y = lidar->pos.y+(sin(toRad(lidar->misure[i].angolo))*i);
+            c.x = lidar->pos.x+(cos(toRad(lidar->misure[i].angolo))*lidar->misure[i].distanza);
+            c.y = lidar->pos.y+(sin(toRad(lidar->misure[i].angolo))*lidar->misure[i].distanza);
 
             inserisci_punto(lista_punti, c);
         }
@@ -162,22 +261,6 @@ Coordinata calcola_centro(Coordinata p1, Coordinata p2, Coordinata p3)
     return centro;
 }
 
-Coordinata circleCenter(Coordinata A, Coordinata B, Coordinata C) {
-
-    float yDelta_a = B.y - A.y;
-    float xDelta_a = B.x - A.x;
-    float yDelta_b = C.y - B.y;
-    float xDelta_b = C.x - B.x;
-    Coordinata center = {0,0};
-
-    float aSlope = yDelta_a/xDelta_a;
-    float bSlope = yDelta_b/xDelta_b;  
-    center.x = (aSlope*bSlope*(A.y - C.y) + bSlope*(A.x + B.x)
-        - aSlope*(B.x+C.x) )/(2* (bSlope-aSlope) );
-    center.y = -1*(center.x - (A.x+B.x)/2)/aSlope +  (A.y+B.y)/2;
-
-    return center;
-  }
 
 /* Calcola il centro della circonferenza due volte e restituisce il punto medio tra le due
  * per cercare di avere una misurazione più precisa
@@ -197,20 +280,20 @@ int trova_centro(CoordList *lista_punti, Coordinata *centro)
 
     if(list_len >= 3)
     {
-        c1 = circleCenter(lista_punti->pos[0], lista_punti->pos[(int)(list_len/2)], lista_punti->pos[list_len-1]);
+        c1 = calcola_centro(lista_punti->pos[0], lista_punti->pos[(int)(list_len/2)], lista_punti->pos[list_len-1]);
 
         centro->x = c1.x;
         centro->y = c1.y;
     }
-/*
+
     if(list_len > 3)
     {
-        c2 = circ(lista_punti->pos[0], lista_punti->pos[(int)(list_len/2 - 1)], lista_punti->pos[list_len-1]);
+        c2 = calcola_centro(lista_punti->pos[0], lista_punti->pos[(int)(list_len/2 - 1)], lista_punti->pos[list_len-1]);
 
         centro->x = (c1.x+c2.x)/2;
         centro->y = (c1.y+c2.y)/2;
     }
-*/
+
     return 1;
 }
 
@@ -232,29 +315,23 @@ void draw_scene(SDL_Renderer *renderer, Lidar *lidar, Sphere *s, CoordList posiz
     // Disegna la sfera
     SDL_SetRenderDrawColor(renderer, 0, 0, 255, 255);
     disegna_sfera(renderer, s->pos.x, s->pos.y, R);
-    
-    // Disegna i raggi laser
-    SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-    for (int i = 0; i < NUMERO_PUNTI; i++)
-    {
-        float angolo = (360/NUMERO_PUNTI)*i;
-        calcola_distanza(angolo, lidar, *s, renderer);
-        
-        float distanza = lidar->misure[lidar->numero_misurazioni-1].distanza;
 
-        SDL_RenderDrawLine(renderer, lidar->pos.x, lidar->pos.y, lidar->pos.x+distanza*cos(toRad(angolo)), lidar->pos.y+distanza*sin(toRad(angolo)));
-    }
-
-    // Disegna il LIDAR
-    SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
-    SDL_Rect rect = {lidar->pos.x - 10, lidar->pos.y - 10, 20, 20};
-    SDL_RenderFillRect(renderer, &rect);
+    // Calcola le misurazioni del lidar
+    fetch_lidar(lidar, s);
+    // Diesegna i raggi del lidar e il lidar stesso
+    disegna_lidar(lidar, renderer);
 
     // Ottiene i punti di contatto come lista
     CoordList *lista_punti = init_list();
     float velocita = 0.0; // Km/h
 
     seleziona_punti(lista_punti, lidar);
+
+    for (int i = 0; i < lista_punti->lenght; i++)
+    {
+        disegna_sfera(renderer, lista_punti->pos[i].x, lista_punti->pos[i].y, 3); // disegna i punti di contatto
+    }
+    
 
     /*
     // TODO Calcola la velocità usando la storia delle posizioni
@@ -276,7 +353,7 @@ void draw_scene(SDL_Renderer *renderer, Lidar *lidar, Sphere *s, CoordList posiz
 
     if(trova_centro(lista_punti, &centro) == True)
     {
-        disegna_sfera(renderer, centro.x, centro.y, 8); // Disegna il centro calcolato
+        disegna_sfera(renderer, centro.x, centro.y, 6); // Disegna il centro calcolato
         inserisci_punto(posizioni, centro); // Memorizza il nuovo punto centrale calcolato
     }
 
@@ -328,6 +405,8 @@ int start_scene()
                 running = 0;
             }
         }
+
+        //getchar();    // Per procedere a step
     }
 
     distruggi_lidar(lidar);
