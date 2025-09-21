@@ -18,7 +18,8 @@
 #define R (109*SCALE)                   // raggio della sfera (109mm)
 #define WINDOW_W 1920
 #define WINDOW_H 1080
-#define NUMERO_PUNTI 500                // il numero di punti totali del lidar
+#define LIDAR_ANG_RES 0.72                  // risoluzione angolare del lidar
+#define NUMERO_PUNTI 360/LIDAR_ANG_RES      // il numero di punti totali del lidar
 #define SENSOR_MAX_DISTANCE (800*SCALE) // la distanza massima di rilevamento di una palla: 1 gutter (~90mm) + pista (1006mm)
 #define LIDAR_ANGLE 180                 // il FoV del LiDAR in °, simmetrico rispetto all'asse x (90° = 45° sopra e 45° sotto l'asse x)
 
@@ -223,9 +224,9 @@ void calcola_distanza(float angle, Lidar *lidar, Sphere s) {
 // Aggiunge per ogni angolo delle misurazioni il dato relativo
 void fetch_lidar(Lidar *lidar, Sphere *s)
 {
-    for (int i = 0; i < NUMERO_PUNTI; i++)
+    for (int i = 0; i < lidar->numero_punti; i++)
     {
-        float angolo = (360.0 / NUMERO_PUNTI)*i;
+        float angolo = (360.0 / lidar->numero_punti)*i;
         calcola_distanza(angolo, lidar, *s);
     }
 }
@@ -388,7 +389,7 @@ void draw_scene(SDL_Renderer *renderer, Lidar *lidar, Sphere *s, CoordList posiz
 
         double delta_distance = distanza_punti(posizioni->pos[posizioni->lenght-1], posizioni->pos[posizioni->lenght-11]);
     
-        velocita = (delta_distance / delta_t)/1e6*3600;   // (mm/ms)/1000000*3600 = Km/h
+        velocita = (delta_distance / delta_t)/1e6*3600000;   // (mm/ms)/1000000*3600000 = Km/h
     
         printf("d: %f\tt: %Lf\t", delta_distance, delta_t);
         printf("%f Km/h\n", velocita);
@@ -413,7 +414,7 @@ int start_scene()
 
     Sphere s;
 
-    Lidar *lidar = (Lidar*)init_lidar_with_screen_size(NUMERO_PUNTI, WINDOW_W, WINDOW_H);
+    Lidar *lidar = (Lidar*)init_lidar_with_position(LIDAR_ANG_RES, WINDOW_W/2, WINDOW_H/2);
     generate_sphere(&s);
 
     // inizializza lista dello storico delle posizioni

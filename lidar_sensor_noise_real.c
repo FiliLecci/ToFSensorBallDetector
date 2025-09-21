@@ -6,14 +6,22 @@
 #include <SDL2/SDL.h>
 #include "lidar.h"
 
-#define SCALE 0.8                       // la scala da applicare a tutto (Per schermi piccoli)
+#define SCALE 0.1                        // la scala da applicare a tutto
 
-#define R (109*SCALE)                   // raggio della palla (109mm)
-#define WINDOW_W 1080
-#define WINDOW_H 1080
-#define LIDAR_ANG_RES 1                 // risoluzione angolare del lidar
-#define NUMERO_PUNTI 360/LIDAR_ANG_RES  // il numero di punti totali del lidar
-#define SENSOR_MAX_DISTANCE (800*SCALE) // la distanza massima di rilevamento di una palla: 1 gutter (~90mm) + pista (1006mm)
+#define R (109*SCALE)                       // raggio della palla (109mm)
+#define WINDOW_W 1900
+#define WINDOW_H 500
+#define PADDING 20                          // px dal bordo dello schermo alla scena
+
+#define LIDAR_ANG_RES 0.72                  // risoluzione angolare del lidar
+#define NUMERO_PUNTI (360/LIDAR_ANG_RES)      // il numero di punti totali del lidar
+#define SENSOR_MAX_DISTANCE (10000*SCALE)   // la distanza massima di rilevamento del LIDAR (10m)
+#define SENSOR_LANE_DISTANCE (250*SCALE)      // distanza orizzontale del LIDAR dalla pista compresa la gutter
+#define SENSOR_CENTER_OFFSET 0*SCALE        // offset del LIDAR dal centro della pista in senso longitudinale: positivo = verso i birilli
+
+#define LANE_WIDTH 1006*SCALE               // 1006mm
+#define LANE_LENGTH 18300*SCALE             // 18,3m
+#define LISTEL_WIDTH LANE_WIDTH/39                     // larghezza di un listello in mm
 
 #define toRad(deg) (deg*M_PI/180)
 
@@ -54,11 +62,11 @@ long get_millis(struct timespec ts)
     return (ts.tv_nsec / 1e6) + (ts.tv_sec * 1e3);
 }
 
-// Genera una posizione casuale della sfera
+// Inizializza la palla all'inizio della pista 
 void generate_sphere(Sphere *s)
 {
-    s->pos.x = ((double) rand() / RAND_MAX)*(SENSOR_MAX_DISTANCE*2)+(WINDOW_W/2)-SENSOR_MAX_DISTANCE;
-    s->pos.y = ((double) rand() / RAND_MAX)*(SENSOR_MAX_DISTANCE*2)+(WINDOW_H/2)-SENSOR_MAX_DISTANCE;
+    s->pos.x = PADDING; // siccome la pista è messa in orizzontale parte dal padding
+    s->pos.y = WINDOW_H - PADDING - LANE_WIDTH/2;
 }
 
 void disegna_sfera(SDL_Renderer *renderer, int cx, int cy, int r)
@@ -80,20 +88,32 @@ void disegna_sfera(SDL_Renderer *renderer, int cx, int cy, int r)
 void disegna_lidar(Lidar *lidar, SDL_Renderer *renderer)
 {
     // Disegna i raggi laser
-    SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+    SDL_SetRenderDrawColor(renderer, 100, 0, 0, 255);
     for (int i = 0; i < lidar->numero_misurazioni; i++)
     {
-        float angolo = (360.0/NUMERO_PUNTI)*i;
+        float angolo = LIDAR_ANG_RES*i;
 
         float distanza = lidar->misure[i].distanza;
 
-        SDL_RenderDrawLine(renderer, lidar->pos.x, lidar->pos.y, lidar->pos.x+distanza*cos(toRad(angolo)), lidar->pos.y+distanza*sin(toRad(angolo)));
+        SDL_RenderDrawLine(renderer, lidar->pos.x, lidar->pos.y, 
+                                     lidar->pos.x+distanza*cos(toRad(angolo)), lidar->pos.y+distanza*sin(toRad(angolo)));
     }
 
     // Disegna il LIDAR
     SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
     SDL_Rect rect = {lidar->pos.x - 10, lidar->pos.y - 10, 20, 20};
     SDL_RenderFillRect(renderer, &rect);
+}
+
+void disegna_pista(Lidar *lidar, SDL_Renderer *renderer){
+    SDL_SetRenderDrawColor(renderer, 120, 100, 0, 255);
+
+    // linea inferiore
+    SDL_RenderDrawLine(renderer, (lidar->pos.x + SENSOR_CENTER_OFFSET) - LANE_LENGTH/2, lidar->pos.y - SENSOR_LANE_DISTANCE,
+                                 (lidar->pos.x + SENSOR_CENTER_OFFSET) + LANE_LENGTH/2, lidar->pos.y - SENSOR_LANE_DISTANCE);
+    // linea superiore
+    SDL_RenderDrawLine(renderer, (lidar->pos.x + SENSOR_CENTER_OFFSET) - LANE_LENGTH/2, lidar->pos.y - SENSOR_LANE_DISTANCE - LANE_WIDTH,
+                                 (lidar->pos.x + SENSOR_CENTER_OFFSET) + LANE_LENGTH/2, lidar->pos.y - SENSOR_LANE_DISTANCE - LANE_WIDTH);
 }
 
 // Calcola la distanza tra p1 e p2
@@ -109,7 +129,8 @@ float distanza_punti(Coordinata p1, Coordinata p2)
 }
 
 // Funzione per calcolare le soluzioni dell'intersezione
-void calcola_distanza(float angle, Lidar *lidar, Sphere s) {
+void calcola_distanza(float angle, Lidar *lidar, Sphere s)
+{
     // Coefficiente angolare della retta
     float rad = angle * M_PI / 180;
     double m;
@@ -216,9 +237,9 @@ void calcola_distanza(float angle, Lidar *lidar, Sphere s) {
 // Aggiunge per ogni angolo delle misurazioni il dato relativo
 void fetch_lidar(Lidar *lidar, Sphere *s)
 {
-    for (int i = 0; i < NUMERO_PUNTI; i++)
+    for (int i = 0; i < lidar->numero_punti; i++)
     {
-        float angolo = (360.0 / NUMERO_PUNTI)*i;
+        float angolo = LIDAR_ANG_RES*i; 
         calcola_distanza(angolo, lidar, *s);
     }
 }
@@ -226,6 +247,9 @@ void fetch_lidar(Lidar *lidar, Sphere *s)
 /* Determina le coordinate dei punti a contatto con la sfera e sensori ad essi associati. 
  * @param *lista_punti l'array nel quale vengono inseriti i punti calolati
  * @param *lidar il lidar che effettua le misurazioni
+ *
+ * TODO questa funzione andrebbe sostituita con una che trova la palla modo più realistico come
+ * dovrebbe essere fatto nella realtà
  */
 void seleziona_punti(CoordList *lista_punti, Lidar *lidar)
 {
@@ -304,24 +328,38 @@ int trova_centro(CoordList *lista_punti, Coordinata *centro)
     return 1;
 }
 
+void bezier_quadratica(Sphere *s, double t,
+                       Coordinata P0, Coordinata P1, Coordinata P2) {
+    double u  = 1.0 - t;
+    double tt = t * t;
+    double uu = u * u;
+
+    s->pos.x = uu * P0.x + 2 * u * t * P1.x + tt * P2.x;
+    s->pos.y = uu * P0.y + 2 * u * t * P1.y + tt * P2.y;
+}
+
 // Funzione per disegnare la scena
 void draw_scene(SDL_Renderer *renderer, Lidar *lidar, Sphere *s, CoordList posizioni[])
 {
-    static int posCounter = 0;
-
+    static int frame = 0;
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
 
-    // sposta il cerchio in basso e gli fa seguire una curva
-    s->pos.y = s->pos.y - 2;
-    if(s->pos.y > WINDOW_H || s->pos.y <= 0)  // Arrivo a fondo schermo
-    {
-        s->pos.y = WINDOW_H;
-        svuota_lista(posizioni);    // Svuota la lista delle posizioni del centro
+    // calcola le nuove coordinate della palla
+    Coordinata pts[] = {
+        {(lidar->pos.x + SENSOR_CENTER_OFFSET) - LANE_LENGTH/2 , (lidar->pos.y - SENSOR_LANE_DISTANCE - LANE_WIDTH) + LISTEL_WIDTH*15}, 
+        {((lidar->pos.x + SENSOR_CENTER_OFFSET) - LANE_LENGTH/2) + 12080*SCALE, (lidar->pos.y - SENSOR_LANE_DISTANCE - LANE_WIDTH)}, 
+        {(lidar->pos.x + SENSOR_CENTER_OFFSET) + LANE_LENGTH/2, (lidar->pos.y - SENSOR_LANE_DISTANCE - LANE_WIDTH) + LANE_WIDTH}
+    };
 
-        posCounter = 0; // Resetta il contatore delle posizioni
+    if (frame >= WINDOW_W){
+        frame = 0;
+        svuota_lista(posizioni);
     }
-    s->pos.x = -atan((double)s->pos.y*0.01)*300 + 1000;
+
+    bezier_quadratica(s, (float)frame/WINDOW_W, pts[0], pts[1], pts[2]);
+    
+    frame++;
 
     // Disegna la sfera
     SDL_SetRenderDrawColor(renderer, 0, 0, 255, 255);
@@ -329,8 +367,11 @@ void draw_scene(SDL_Renderer *renderer, Lidar *lidar, Sphere *s, CoordList posiz
 
     // Calcola le misurazioni del lidar
     fetch_lidar(lidar, s);
-    // Diesegna i raggi del lidar e il lidar stesso
+    // Disegna i raggi del lidar e il lidar stesso
     disegna_lidar(lidar, renderer);
+
+    // Disegna la pista
+    disegna_pista(lidar, renderer);
 
     // Ottiene i punti di contatto come lista
     CoordList *lista_punti = init_list();
@@ -369,7 +410,7 @@ void draw_scene(SDL_Renderer *renderer, Lidar *lidar, Sphere *s, CoordList posiz
     float velocita = 0.0; // Km/h
     static struct timespec last_checkpoint_ts;
 
-    if(posCounter == 50)
+    if(posizioni->lenght%50 == 0 && posizioni->lenght > 0)
     {
         struct timespec last_ts;
         timespec_get(&last_ts, TIME_UTC);
@@ -379,21 +420,22 @@ void draw_scene(SDL_Renderer *renderer, Lidar *lidar, Sphere *s, CoordList posiz
     
         long double delta_t = (end_ms - start_ms) / 1e3; // / 1000 per arrivare da ms a s
 
-        double delta_distance = distanza_punti(posizioni->pos[posizioni->lenght-1], posizioni->pos[posizioni->lenght-11]);
+        double delta_distance = 0;
+
+        if(posizioni->lenght >= 2){
+            delta_distance = distanza_punti(posizioni->pos[posizioni->lenght-1], posizioni->pos[posizioni->lenght-50]);
+        }
     
-        velocita = (delta_distance / delta_t)/1e6*3600;   // (mm/ms)/1000000*3600 = Km/h
+        velocita = (delta_distance / delta_t)/1e6*3600;   // (mm/s)/1000000*3600 = Km/h
     
         printf("d: %f\tt: %Lf\t", delta_distance, delta_t);
         printf("%f Km/h\n", velocita);
 
         last_checkpoint_ts = last_ts;
-        posCounter = 0;    
     }
 
-    posCounter++;
-
     distruggi_lista(lista_punti);   // Libera la lista
-    svuota_misure(lidar);
+    // svuota_misure(lidar);        // non dovrebbe servire perché lo fa in automatico quando aggiungo un punto oltre quelli massimi del LIDAR 
 
     SDL_RenderPresent(renderer);
 }
@@ -406,7 +448,7 @@ int start_scene()
 
     Sphere s;
 
-    Lidar *lidar = (Lidar*)init_lidar_with_screen_size(NUMERO_PUNTI, WINDOW_W, WINDOW_H);
+    Lidar *lidar = (Lidar*)init_lidar_with_position(LIDAR_ANG_RES, WINDOW_W/2, WINDOW_H-PADDING);
     generate_sphere(&s);
 
     // inizializza lista dello storico delle posizioni
