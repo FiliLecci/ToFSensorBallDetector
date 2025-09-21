@@ -105,7 +105,8 @@ void disegna_lidar(Lidar *lidar, SDL_Renderer *renderer)
     SDL_RenderFillRect(renderer, &rect);
 }
 
-void disegna_pista(Lidar *lidar, SDL_Renderer *renderer){
+void disegna_pista(Lidar *lidar, SDL_Renderer *renderer)
+{
     SDL_SetRenderDrawColor(renderer, 120, 100, 0, 255);
 
     // linea inferiore
@@ -292,6 +293,23 @@ Coordinata calcola_centro(Coordinata p1, Coordinata p2, Coordinata p3)
     return centro;
 }
 
+Coordinata calcola_centro_due(Coordinata p1, Coordinata p2)
+{
+    Coordinata punto_medio = {(p1.x + p2.x)/2, (p1.y + p2.y)/2};
+
+    float distanza = distanza_punti(p1, p2);
+
+    // distanza dal punto medio al centro
+    double h = sqrt(R*R - (distanza/2.0)*(distanza/2.0));
+
+    // versore perpendicolare a AB
+    double ux = -(p1.y - p2.y) / distanza;
+    double uy =  (p1.x - p2.x) / distanza;
+
+    Coordinata centro = {punto_medio.x + h*ux, punto_medio.y + h*uy};
+    
+    return centro;
+}
 
 /* Calcola il centro della circonferenza due volte e restituisce il punto medio tra le due
  * per cercare di avere una misurazione più precisa
@@ -302,27 +320,27 @@ int trova_centro(CoordList *lista_punti, Coordinata *centro)
     Coordinata c1, c2;
     int list_len = lista_punti->lenght;
 
-    if(list_len < 3)
+    if(list_len < 2)
     {
-        centro->x = 0;
-        centro->y = 0;
         return 0;
+    }
+
+    if(list_len == 2)
+    {
+        c1 = calcola_centro_due(lista_punti->pos[0], lista_punti->pos[1]);
+
+        centro->x = c1.x;
+        centro->y = c1.y;
+
+        return 1;
     }
 
     if(list_len >= 3)
     {
-        c1 = calcola_centro(lista_punti->pos[0], lista_punti->pos[(int)(list_len/2)], lista_punti->pos[list_len-1]);
+        c2 = calcola_centro(lista_punti->pos[0], lista_punti->pos[(int)(list_len/2)], lista_punti->pos[list_len-1]);
 
-        centro->x = c1.x;
-        centro->y = c1.y;
-    }
-
-    if(list_len > 3)
-    {
-        c2 = calcola_centro(lista_punti->pos[0], lista_punti->pos[(int)(list_len/2 - 1)], lista_punti->pos[list_len-1]);
-
-        centro->x = (c1.x+c2.x)/2;
-        centro->y = (c1.y+c2.y)/2;
+        centro->x = c2.x;
+        centro->y = c2.y;
     }
 
     return 1;
@@ -386,7 +404,7 @@ void draw_scene(SDL_Renderer *renderer, Lidar *lidar, Sphere *s, CoordList posiz
     // Calcola il centro del cerchio usando i primi 3 punti e gli ultimi 3 per ridondanza, poi usa il punto medio
     Coordinata centro;
 
-    if(trova_centro(lista_punti, &centro) == true)
+    if(trova_centro(lista_punti, &centro) == 1)
     {
         disegna_sfera(renderer, centro.x, centro.y, 6); // Disegna il centro calcolato
         inserisci_punto(posizioni, centro); // Memorizza il nuovo punto centrale calcolato
@@ -406,7 +424,7 @@ void draw_scene(SDL_Renderer *renderer, Lidar *lidar, Sphere *s, CoordList posiz
         SDL_RenderDrawLine(renderer, p1.x, p1.y, p2.x, p2.y);   // Disegna una linea tra i punti
     }
 
-    // Calcola la velocità ogni 10 misure
+    // Calcola la velocità ogni 50 misure
     float velocita = 0.0; // Km/h
     static struct timespec last_checkpoint_ts;
 
