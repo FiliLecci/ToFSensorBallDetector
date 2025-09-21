@@ -7,8 +7,8 @@
 
 // 1mm = 1pixel
 
-#define N 20  // Numero di sensori
-#define SENSOR_DISTANCE 50 // Distranza tra i sensori 5cm = 0.05m
+#define N 40  // Numero di sensori
+#define SENSOR_DISTANCE 25 // Distranza tra i sensori 5cm = 0.05m
 #define R 109  // Raggio della sfera (109mm)
 #define SENSOR_MAX_DISTANCE 1096 //la distanza massima di rilevamento di una palla: 1 gutter (~90mm) + pista (1006mm)
 #define WINDOW_W 1200

@@ -6,21 +6,14 @@
 #include <SDL2/SDL.h>
 #include "lidar.h"
 
-// 1mm = 1pixel
-
-// Per il meme
-#ifndef M_PI
- #define M_PI 3.141592653589793238462643383279502884    // per il meme
-#endif
-
 #define SCALE 0.8                       // la scala da applicare a tutto (Per schermi piccoli)
 
-#define R (109*SCALE)                   // raggio della sfera (109mm)
-#define WINDOW_W 1920
+#define R (109*SCALE)                   // raggio della palla (109mm)
+#define WINDOW_W 1080
 #define WINDOW_H 1080
-#define NUMERO_PUNTI 500                // il numero di punti totali del lidar
+#define LIDAR_ANG_RES 1                 // risoluzione angolare del lidar
+#define NUMERO_PUNTI 360/LIDAR_ANG_RES  // il numero di punti totali del lidar
 #define SENSOR_MAX_DISTANCE (800*SCALE) // la distanza massima di rilevamento di una palla: 1 gutter (~90mm) + pista (1006mm)
-#define LIDAR_ANGLE 180                 // il FoV del LiDAR in °, simmetrico rispetto all'asse x (90° = 45° sopra e 45° sotto l'asse x)
 
 #define toRad(deg) (deg*M_PI/180)
 
